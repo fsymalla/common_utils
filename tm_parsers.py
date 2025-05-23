@@ -64,7 +64,9 @@ def est_ct_character(exc_orbs, orb_atoms, dimer_only=False):
         from split_xyz_dimer import read_xyz,find_monomers
         run_t2x()
         atoms = read_xyz("coord.xyz")
-        monomer1_ids, monomer2_ids = find_monomers(atoms, 2.1)
+        monomer1_ids, monomer2_ids = find_monomers(atoms)
+        if len(monomer2_ids) == 0:
+            raise Exception("user requested dimer ct state but could not identify dimer fragments")
     
     ct_character = []
     for excs in exc_orbs:

@@ -2,14 +2,28 @@ import math
 import argparse
 from collections import deque
 
-# A dictionary of approximate covalent radii (in Angstroms) for common elements
-# This can be used for a more adaptive cutoff, but a fixed cutoff is simpler for a start.
-# For this script, we'll start with a fixed cutoff.
-# COVALENT_RADII = {
-#     'H': 0.37, 'C': 0.77, 'N': 0.75, 'O': 0.73, 'F': 0.71,
-#     'P': 1.10, 'S': 1.03, 'Cl': 0.99,
-#     # Add more as needed
-# }
+      
+# Approximate covalent radii in Angstroms
+# Source: Primarily Wikipedia (Covalent radius page) and common values used in cheminformatics.
+# These can vary slightly depending on the source and coordination environment.
+BOND_RADII = {
+    'H': 0.37, 'HE': 0.32,
+    'LI': 1.34, 'BE': 0.90, 'B': 0.82, 'C': 0.77, 'N': 0.75, 'O': 0.73, 'F': 0.71, 'NE': 0.69,
+    'NA': 1.54, 'MG': 1.30, 'AL': 1.18, 'SI': 1.11, 'P': 1.06, 'S': 1.02, 'CL': 0.99, 'AR': 0.97,
+    'K': 1.96, 'CA': 1.74, 'SC': 1.44, 'TI': 1.36, 'V': 1.25, 'CR': 1.27, 'MN': 1.39, # Mn radius varies a lot
+    'FE': 1.25, 'CO': 1.26, 'NI': 1.21, 'CU': 1.38, 'ZN': 1.31, 'GA': 1.26, 'GE': 1.22,
+    'AS': 1.19, 'SE': 1.16, 'BR': 1.14, 'KR': 1.10,
+    'RB': 2.11, 'SR': 1.92, 'Y': 1.62, 'ZR': 1.48, 'NB': 1.37, 'MO': 1.45, 'TC': 1.56,
+    'RU': 1.26, 'RH': 1.35, 'PD': 1.31, 'AG': 1.53, 'CD': 1.48, 'IN': 1.44, 'SN': 1.41,
+    'SB': 1.38, 'TE': 1.35, 'I': 1.33, 'XE': 1.30,
+    'CS': 2.25, 'BA': 1.98, 'LA': 1.69, # Lanthanides ...
+    'AU': 1.44, 'HG': 1.49, 'PB': 1.47,
+    # Add more as needed
+}
+
+# A default radius for elements not in the dictionary
+DEFAULT_RADIUS = 0.7  # Angstroms, a fallback similar to carbon/oxygen
+
 
 def read_xyz(filename):
     """
@@ -60,7 +74,7 @@ def calculate_distance_sq(atom1_coords, atom2_coords):
     """Calculates the squared Euclidean distance between two sets of coordinates."""
     return sum([(c1 - c2)**2 for c1, c2 in zip(atom1_coords, atom2_coords)])
 
-def find_monomers(atoms, connectivity_cutoff_A=2.5):
+def find_monomers(atoms, bond_length_factor=1.2):
     """
     Finds monomers based on atom connectivity.
 
@@ -81,13 +95,17 @@ def find_monomers(atoms, connectivity_cutoff_A=2.5):
     # Use atom['id'] which is 1-based
     atom_map = {atom['id']: atom for atom in atoms} 
 
-    cutoff_sq = connectivity_cutoff_A**2
-
     # Build adjacency list
     for i in range(num_atoms):
         for j in range(i + 1, num_atoms):
             atom_i = atoms[i]
             atom_j = atoms[j]
+            # Get radii, using default if element not found
+            radius_i = BOND_RADII.get(atom_i['element'].upper(), DEFAULT_RADIUS)
+            radius_j = BOND_RADII.get(atom_j['element'].upper(), DEFAULT_RADIUS)
+            dynamic_cutoff = (radius_i + radius_j) * bond_length_factor
+            cutoff_sq = dynamic_cutoff**2
+
             dist_sq = calculate_distance_sq(atom_i['coords'], atom_j['coords'])
             if dist_sq < cutoff_sq:
                 adj[atom_i['id']].append(atom_j['id'])
@@ -138,9 +156,8 @@ def main():
     parser = argparse.ArgumentParser(description="Finds atom IDs of two monomers in an XYZ file representing a dimer.")
     parser.add_argument("xyz_file", help="Path to the XYZ input file.")
     parser.add_argument(
-        "-c", "--cutoff", type=float, default=2.1,
-        help="Connectivity cutoff distance in Angstroms (default: 2.5). "
-             "Atoms closer than this are considered part of the same monomer."
+        "-b", "--bond_length_factor", type=float, default=1.2,
+        help="scale bond length from covalent radii for bond detection"
     )
     args = parser.parse_args()
 
@@ -151,7 +168,7 @@ def main():
         print(f"Successfully read {len(atoms)} atoms.")
         print(f"Using connectivity cutoff: {args.cutoff} Å")
         
-        monomer1_ids, monomer2_ids = find_monomers(atoms, args.cutoff)
+        monomer1_ids, monomer2_ids = find_monomers(atoms, args.bond_length_factor)
 
         if monomer1_ids and monomer2_ids:
             print("\n--- Monomer Identification ---")
