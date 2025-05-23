@@ -11,11 +11,16 @@ def get_ridft_path():
     turbodir = pathlib.Path(os.environ["TURBODIR"])
     return turbodir/"bin"/"em64t-unknown-linux-gnu_smp"/"ridft_omp"
 
+def run_t2x():
+    turbodir = pathlib.Path(os.environ["TURBODIR"])
+    t2x = turbodir/"scripts"/"t2x"
+    os.system(f"{t2x} coord > coord.xyz")
+
 def read_exspectrum():
     data = open("exspectrum").readlines()
     return [[float(ls.split()[3]),float(ls.split()[7])] for i,ls in enumerate(data) if len(ls.split()) == 8 and i > 1 ]
 
-def find_ct_excitations():
+def find_ct_excitations(dimer_only):
     if os.path.exists("escf.out"):
         fname = "escf.out"
     elif os.path.exists("egrad.out"):
@@ -39,7 +44,7 @@ def find_ct_excitations():
 
     all_orbs = list(set([orb for exc in excitations for contr in exc for orb in [contr[0], contr[1]]]))
     orb_atoms = run_pop_for_orbs(all_orbs)
-    ct_char = est_ct_character(excitations, orb_atoms)
+    ct_char = est_ct_character(excitations, orb_atoms, dimer_only)
     spectrum = read_exspectrum()
     
     ct_excs = []
@@ -54,7 +59,13 @@ def find_ct_excitations():
     if len(non_ct_excs) > 0:
         np.savetxt("non_ct_excitations.dat", non_ct_excs)
 
-def est_ct_character(exc_orbs, orb_atoms):
+def est_ct_character(exc_orbs, orb_atoms, dimer_only=False):
+    if dimer_only:
+        from split_xyz_dimer import read_xyz,find_monomers
+        run_t2x()
+        atoms = read_xyz("coord.xyz")
+        monomer1_ids, monomer2_ids = find_monomers(atoms, 2.1)
+    
     ct_character = []
     for excs in exc_orbs:
         new_w = 0.0
@@ -64,10 +75,27 @@ def est_ct_character(exc_orbs, orb_atoms):
             atom_ids_i = np.array([ato[0] for ato in orb_atoms[iorb]])
             atom_ids_f = np.array([ato[0] for ato in orb_atoms[forb]])
             atom_w_f = {ato[0]: ato[2] for ato in orb_atoms[forb]}
-            new_atoms = np.setdiff1d(atom_ids_f, atom_ids_i)
-            kept_atoms = np.intersect1d(atom_ids_f, atom_ids_i)
-            new_w += sum(atom_w_f.get(idx,0.0) for idx in new_atoms) * w/100.0
-            kept_w += sum(atom_w_f.get(idx,0.0) for idx in kept_atoms) * w/100.0
+            atom_w_i = {ato[0]: ato[2] for ato in orb_atoms[iorb]}
+            if dimer_only:
+                #we are looking for dimer ct excitations:
+                init_1 = sum(atom_w_i.get(idx,0.0) for idx in atom_ids_i if idx in monomer1_ids )
+                init_2 = sum(atom_w_i.get(idx,0.0) for idx in atom_ids_i if idx in monomer2_ids )
+                final_1 = sum(atom_w_f.get(idx,0.0) for idx in atom_ids_f if idx in monomer1_ids )
+                final_2 = sum(atom_w_f.get(idx,0.0) for idx in atom_ids_f if idx in monomer2_ids )
+                if init_1 > init_2  and final_2 > final_1:
+                    new_w += (final_2 / (init_2 +final_2)) * w/100.0
+                    kept_w += (init_2 / (init_2 +final_2)) * w/100.0
+                elif init_1 < init_2  and final_2 < final_1:
+                    new_w += (final_1 / (init_1 +final_1)) * w/100.0
+                    kept_w += (init_1 / (init_1 +final_1)) * w/100.0
+                else:
+                    new_w += 0.0 * w
+                    kept_w += 1.0 * w
+            else:
+                new_atoms = np.setdiff1d(atom_ids_f, atom_ids_i)
+                kept_atoms = np.intersect1d(atom_ids_f, atom_ids_i)
+                new_w += sum(atom_w_f.get(idx,0.0) for idx in new_atoms) * w/100.0
+                kept_w += sum(atom_w_f.get(idx,0.0) for idx in kept_atoms) * w/100.0
         ct_character.append(new_w/(new_w+kept_w))
 
     return ct_character
@@ -116,10 +144,11 @@ def main():
     # Set up argument parser
     parser = argparse.ArgumentParser(description='Parsers for various TM outputs ')
     parser.add_argument('--find_ct_exc', action='store_true', help='creates seperate file for excitation with CT character and without CT character')
+    parser.add_argument('--dimer_ct', action='store_true', help='consider only dimer CT as CT')
     args = parser.parse_args()
 
     if args.find_ct_exc:
-        find_ct_excitations()
+        find_ct_excitations(args.dimer_ct)
 
 
 if __name__ == "__main__":
