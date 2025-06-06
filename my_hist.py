@@ -23,6 +23,8 @@ def load_data(filename):
         if data.ndim == 1 and len(data) == 2:
             # Handle single row case
             data = data.reshape(1, 2)
+        elif data.ndim == 1:
+            data = data.reshape(len(data), 1)
         elif data.ndim != 2:
             breakpoint()
             raise ValueError(f"Data in {filename} should have shape (n,2), but has shape {data.shape}")
