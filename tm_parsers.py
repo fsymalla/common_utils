@@ -44,16 +44,16 @@ def find_ct_excitations(dimer_only):
 
     all_orbs = list(set([orb for exc in excitations for contr in exc for orb in [contr[0], contr[1]]]))
     orb_atoms = run_pop_for_orbs(all_orbs)
-    ct_char = est_ct_character(excitations, orb_atoms, dimer_only)
+    ct_char, exc_locs = est_ct_character(excitations, orb_atoms, dimer_only)
     spectrum = read_exspectrum()
     
     ct_excs = []
     non_ct_excs = []
-    for ct,(e,osc) in zip(ct_char,spectrum):
+    for ct,(e,osc), ex_loc in zip(ct_char,spectrum, exc_locs):
         if ct > 0.75:
-            ct_excs.append([e,osc])
+            ct_excs.append([e,osc, ex_loc])
         else:
-            non_ct_excs.append([e,osc])
+            non_ct_excs.append([e,osc, ex_loc])
     if len(ct_excs) > 0:
         np.savetxt("ct_excitations.dat", ct_excs)
     if len(non_ct_excs) > 0:
@@ -69,9 +69,13 @@ def est_ct_character(exc_orbs, orb_atoms, dimer_only=False):
             raise Exception("user requested dimer ct state but could not identify dimer fragments")
     
     ct_character = []
+    exc_locs = []
     for excs in exc_orbs:
         new_w = 0.0
         kept_w = 0.0
+        total_ct_amount = 0.0
+        total_weight = 0.0
+        exc_loc = {"11": 0.0, "22": 0.0, "12": 0.0, "21": 0.0}
         for exc in excs:
             iorb, forb, w = exc
             atom_ids_i = np.array([ato[0] for ato in orb_atoms[iorb]])
@@ -80,27 +84,50 @@ def est_ct_character(exc_orbs, orb_atoms, dimer_only=False):
             atom_w_i = {ato[0]: ato[2] for ato in orb_atoms[iorb]}
             if dimer_only:
                 #we are looking for dimer ct excitations:
-                init_1 = sum(atom_w_i.get(idx,0.0) for idx in atom_ids_i if idx in monomer1_ids )
-                init_2 = sum(atom_w_i.get(idx,0.0) for idx in atom_ids_i if idx in monomer2_ids )
-                final_1 = sum(atom_w_f.get(idx,0.0) for idx in atom_ids_f if idx in monomer1_ids )
-                final_2 = sum(atom_w_f.get(idx,0.0) for idx in atom_ids_f if idx in monomer2_ids )
-                if init_1 > init_2  and final_2 > final_1:
-                    new_w += (final_2 / (init_2 +final_2)) * w/100.0
-                    kept_w += (init_2 / (init_2 +final_2)) * w/100.0
-                elif init_1 < init_2  and final_2 < final_1:
-                    new_w += (final_1 / (init_1 +final_1)) * w/100.0
-                    kept_w += (init_1 / (init_1 +final_1)) * w/100.0
-                else:
-                    new_w += 0.0 * w
-                    kept_w += 1.0 * w
+                hole_on_m1  = sum(atom_w_i.get(idx,0.0) for idx in atom_ids_i if idx in monomer1_ids )
+                hole_on_m2  = sum(atom_w_i.get(idx,0.0) for idx in atom_ids_i if idx in monomer2_ids )
+                electron_on_m1 = sum(atom_w_f.get(idx,0.0) for idx in atom_ids_f if idx in monomer1_ids )
+                electron_on_m2 = sum(atom_w_f.get(idx,0.0) for idx in atom_ids_f if idx in monomer2_ids )
+                
+                #if init_1 > init_2  and final_2 > final_1:
+                #    new_w += (final_2 / (init_2 +final_2)) * w/100.0
+                #    kept_w += (init_2 / (init_2 +final_2)) * w/100.0
+                #elif init_1 < init_2  and final_2 < final_1:
+                #    new_w += (final_1 / (init_1 +final_1)) * w/100.0
+                #    kept_w += (init_1 / (init_1 +final_1)) * w/100.0
+                #else:
+                #    new_w += 0.0 * w
+                #    kept_w += 1.0 * w
+                ct_1_to_2 = min(hole_on_m1, electron_on_m2)
+                ct_2_to_1 = min(hole_on_m2, electron_on_m1)
+                exc_loc["11"] += min(hole_on_m1, electron_on_m1) * w
+                exc_loc["22"] += min(hole_on_m2, electron_on_m2) * w
+                exc_loc["12"] += ct_1_to_2 * w
+                exc_loc["21"] += ct_2_to_1 * w
+
+                # The total CT for this single orbital transition is the sum of both directions
+                transition_ct = ct_1_to_2 + ct_2_to_1
+
+                # Add the weighted CT amount to the total for the excitation
+                total_ct_amount += w * transition_ct
+                total_weight += w
+
             else:
                 new_atoms = np.setdiff1d(atom_ids_f, atom_ids_i)
                 kept_atoms = np.intersect1d(atom_ids_f, atom_ids_i)
                 new_w += sum(atom_w_f.get(idx,0.0) for idx in new_atoms) * w/100.0
                 kept_w += sum(atom_w_f.get(idx,0.0) for idx in kept_atoms) * w/100.0
-        ct_character.append(new_w/(new_w+kept_w))
+        if dimer_only:
+            if total_weight > 1e-6:
+                ct_character.append(total_ct_amount / total_weight)
+            else:
+                ct_character.append(0.0)
+            exc_locs.append(max(exc_loc,key=exc_loc.get))
+        else:
+            ct_character.append(new_w/(new_w+kept_w))
+            exc_locs.append(0.0)
 
-    return ct_character
+    return ct_character, exc_locs
 
 
 def run_pop_for_orbs(orb_ids):
