@@ -51,9 +51,9 @@ def find_ct_excitations(dimer_only):
     non_ct_excs = []
     for ct,(e,osc), ex_loc in zip(ct_char,spectrum, exc_locs):
         if ct > 0.75:
-            ct_excs.append([e,osc, ex_loc])
+            ct_excs.append([e,osc, int(ex_loc)])
         else:
-            non_ct_excs.append([e,osc, ex_loc])
+            non_ct_excs.append([e,osc, int(ex_loc)])
     if len(ct_excs) > 0:
         np.savetxt("ct_excitations.dat", ct_excs)
     if len(non_ct_excs) > 0:
@@ -153,9 +153,9 @@ def parse_orb_atoms(proper_file):
             ls = line.split()
             if "MULLIKEN BRUTTO POPULATIONS FOR SELECTED MOS" in line:
                 start = True
-            if read_orb and len(ls) < 5:
+            if read_orb and len(ls) ==0:
                 read_orb = False
-            if read_orb and len(ls) >= 5 and ls[0] != "atom":
+            if read_orb and len(ls) >= 2 and ls[0] != "atom":
                 atom_id = int("".join([char for char in ls[0] if char.isdigit()]))
                 atom_el = "".join([char for char in ls[0] if not char.isdigit()])
                 orbs[orb_id].append([atom_id, atom_el, float(ls[1])])
