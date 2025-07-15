@@ -54,7 +54,7 @@ def find_ct_excitations(dimer_only):
             ct_excs.append([e,osc, int(ex_loc)])
         else:
             non_ct_excs.append([e,osc, int(ex_loc)])
-    
+
     if len(ct_excs) > 0:
         np.savetxt("ct_excitations.dat", ct_excs, fmt='%s')
     if len(non_ct_excs) > 0:
@@ -143,6 +143,11 @@ def run_pop_for_orbs(orb_ids):
     os.system(f"{ridft_path} -proper > proper_mos.out")
     shutil.move("control_backup","control")
     orb_atoms = parse_orb_atoms("proper_mos.out")
+    #normalize from density to orbital
+    for orb_id, orb_pop in orb_atoms.items():
+        p_sum = sum(ato[2] for ato in orb_pop)
+        for ato in orb_pop:
+            ato[2] /=p_sum
     return orb_atoms
 
 def parse_orb_atoms(proper_file):
