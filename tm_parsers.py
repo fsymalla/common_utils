@@ -54,10 +54,11 @@ def find_ct_excitations(dimer_only):
             ct_excs.append([e,osc, int(ex_loc)])
         else:
             non_ct_excs.append([e,osc, int(ex_loc)])
+    
     if len(ct_excs) > 0:
-        np.savetxt("ct_excitations.dat", ct_excs)
+        np.savetxt("ct_excitations.dat", ct_excs, fmt='%s')
     if len(non_ct_excs) > 0:
-        np.savetxt("non_ct_excitations.dat", non_ct_excs)
+        np.savetxt("non_ct_excitations.dat", non_ct_excs, fmt='%s')
 
 def est_ct_character(exc_orbs, orb_atoms, dimer_only=False):
     if dimer_only:
